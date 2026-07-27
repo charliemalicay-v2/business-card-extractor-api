@@ -6,6 +6,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.services.exceptions import (
     ExtractionServiceUnavailableError,
+    ImageStorageError,
     InvalidImageError,
     NotABusinessCardError,
     OcrNoTextError,
@@ -60,6 +61,17 @@ def register_exception_handlers(app: FastAPI) -> None:
             content={
                 "error_code": "extraction_service_unavailable",
                 "message": "The extraction service is temporarily unavailable. Please try again later.",
+            },
+        )
+
+    @app.exception_handler(ImageStorageError)
+    async def handle_image_storage_error(request: Request, exc: ImageStorageError) -> JSONResponse:
+        logger.exception("Image storage operation failed")
+        return JSONResponse(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            content={
+                "error_code": "image_storage_unavailable",
+                "message": "The image storage backend is temporarily unavailable. Please try again later.",
             },
         )
 
