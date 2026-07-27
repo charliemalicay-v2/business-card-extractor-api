@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import get_card_processing_service, get_image_storage
+from app.api.dependencies import get_card_processing_service, get_card_repository, get_image_storage
 from app.db.card_repository import CardRepository
 from app.db.session import get_db
 from app.main import app
@@ -624,3 +624,57 @@ def test_delete_card_succeeds_even_when_image_storage_delete_fails(client):
 
     _, total = CardRepository(client.db_session).list()
     assert total == 0
+
+
+def test_update_card_returns_404_when_record_disappears_before_update(client):
+    """Simulates a concurrent delete landing between the route's existence check and the
+    actual repository.update() call, by wrapping the real repository so update() reports
+    not-found even though get_by_id() still succeeds."""
+
+    class _RaceyRepository:
+        def __init__(self, real: CardRepository):
+            self._real = real
+
+        def get_by_id(self, record_id):
+            return self._real.get_by_id(record_id)
+
+        def update(self, record_id, fields):
+            return None
+
+    upload = client.post("/cards", files={"file": ("card.png", _card_image_bytes(), "image/png")})
+    card_id = upload.json()["id"]
+
+    real_repository = CardRepository(client.db_session)
+    app.dependency_overrides[get_card_repository] = lambda: _RaceyRepository(real_repository)
+
+    response = client.patch(f"/cards/{card_id}", data={"company_value": "Doesn't matter"})
+
+    assert response.status_code == 404
+    assert response.json()["error_code"] == "record_not_found"
+
+
+def test_delete_card_returns_404_when_record_disappears_before_delete(client):
+    """Simulates a concurrent delete landing between the route's existence check and the
+    actual repository.delete() call, by wrapping the real repository so delete() reports
+    not-found even though get_by_id() still succeeds."""
+
+    class _RaceyRepository:
+        def __init__(self, real: CardRepository):
+            self._real = real
+
+        def get_by_id(self, record_id):
+            return self._real.get_by_id(record_id)
+
+        def delete(self, record_id):
+            return False
+
+    upload = client.post("/cards", files={"file": ("card.png", _card_image_bytes(), "image/png")})
+    card_id = upload.json()["id"]
+
+    real_repository = CardRepository(client.db_session)
+    app.dependency_overrides[get_card_repository] = lambda: _RaceyRepository(real_repository)
+
+    response = client.delete(f"/cards/{card_id}")
+
+    assert response.status_code == 404
+    assert response.json()["error_code"] == "record_not_found"

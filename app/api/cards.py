@@ -239,6 +239,11 @@ async def update_card(
         fields["image_filename"] = file.filename
 
     updated = repository.update(card_id, fields)
+    if updated is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail={"error_code": "record_not_found", "message": f"No record found with id {card_id}."},
+        )
 
     if file is not None and old_image_storage_key is not None:
         image_storage.delete(old_image_storage_key)
@@ -268,4 +273,9 @@ def delete_card(
                 card_id,
             )
 
-    repository.delete(card_id)
+    deleted = repository.delete(card_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail={"error_code": "record_not_found", "message": f"No record found with id {card_id}."},
+        )
