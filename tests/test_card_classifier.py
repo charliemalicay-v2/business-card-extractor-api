@@ -31,6 +31,21 @@ def _non_card_shaped_image() -> np.ndarray:
     return image
 
 
+def _fragmented_card_outline_image() -> np.ndarray:
+    """Four disjoint corner marks tracing a card-shaped rectangle, with no single contour
+    spanning the outline. Each mark alone fails the area/aspect checks; the union of all
+    of them does not."""
+    image = np.full((200, 350, 3), 255, dtype=np.uint8)
+    for x, y in ((5, 5), (335, 5), (5, 185), (335, 185)):
+        cv2.rectangle(image, (x, y), (x + 10, y + 10), (0, 0, 0), -1)
+    return image
+
+
+def _blank_image() -> np.ndarray:
+    """A featureless image with no edges, so Canny detects zero contours."""
+    return np.full((200, 350, 3), 255, dtype=np.uint8)
+
+
 @pytest.fixture
 def classifier() -> CardClassifier:
     return CardClassifier()
@@ -42,6 +57,18 @@ def test_check_shape_accepts_card_like_rectangle(classifier):
 
 def test_check_shape_rejects_small_non_rectangular_shape(classifier):
     assert classifier.check_shape(_non_card_shaped_image()) is False
+
+
+def test_check_shape_accepts_fragmented_card_outline(classifier):
+    """Regression test: the largest single contour is a tiny corner mark, but the union of
+    all contours traces a card-shaped rectangle, so the shape check should pass."""
+    assert classifier.check_shape(_fragmented_card_outline_image()) is True
+
+
+def test_check_shape_falls_back_to_image_dimensions_when_no_contours(classifier):
+    """Regression test: when Canny finds no edges at all, check_shape should fall back to
+    the raw image dimensions instead of returning False outright."""
+    assert classifier.check_shape(_blank_image()) is True
 
 
 def test_check_text_patterns_accepts_email(classifier):
