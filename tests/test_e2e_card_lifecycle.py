@@ -8,7 +8,6 @@ stack) runs for real, against real fixture image files on disk rather than in-me
 byte strings.
 """
 
-import uuid
 from pathlib import Path
 
 import pytest

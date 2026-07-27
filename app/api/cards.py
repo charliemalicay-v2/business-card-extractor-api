@@ -6,7 +6,12 @@ from fastapi import status as http_status
 from app.api.dependencies import get_card_processing_service, get_card_repository
 from app.config import settings
 from app.db.card_repository import CardRepository
-from app.schemas.response import CardListResponse, CardResponse, ReviewResolutionRequest
+from app.schemas.response import (
+    CardListItemResponse,
+    CardListResponse,
+    CardResponse,
+    ReviewResolutionRequest,
+)
 from app.services.card_processing_service import CardProcessingService
 
 router = APIRouter(prefix="/cards", tags=["cards"])
@@ -22,7 +27,10 @@ async def upload_card(
             status_code=http_status.HTTP_400_BAD_REQUEST,
             detail={
                 "error_code": "unsupported_format",
-                "message": f"Unsupported content type '{file.content_type}'. Allowed: {settings.allowed_content_types}.",
+                "message": (
+                    f"Unsupported content type '{file.content_type}'. "
+                    f"Allowed: {settings.allowed_content_types}."
+                ),
             },
         )
 
@@ -69,7 +77,7 @@ def list_cards(
 ) -> CardListResponse:
     records, total = repository.list(status=status, page=page, page_size=page_size)
     return CardListResponse(
-        items=[CardResponse.from_record(r) for r in records],
+        items=[CardListItemResponse.from_record(r) for r in records],
         total=total,
         page=page,
         page_size=page_size,

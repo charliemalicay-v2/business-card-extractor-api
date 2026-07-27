@@ -6,7 +6,10 @@ from app.db.card_repository import CardRepository
 from app.schemas import ExtractedField, LlmExtractionResult
 from app.services.card_classifier import CardClassifier
 from app.services.card_processing_service import CardProcessingService
-from app.services.exceptions import ExtractionServiceUnavailableError, NotABusinessCardError
+from app.services.exceptions import (
+    ExtractionServiceUnavailableError,
+    NotABusinessCardError,
+)
 from app.services.image_preprocessor import ImagePreprocessor
 from app.services.qr_service import QrService
 from app.services.reconciliation_service import ReconciliationService

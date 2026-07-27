@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import get_card_processing_service, get_card_repository
+from app.api.dependencies import get_card_processing_service
 from app.db.card_repository import CardRepository
 from app.db.session import get_db
 from app.main import app
@@ -263,3 +263,15 @@ def test_list_cards_filters_by_status_and_paginates(client):
     assert len(body["items"]) == 2
     assert body["page"] == 1
     assert body["page_size"] == 2
+
+
+def test_list_cards_items_omit_raw_ocr_text_but_detail_view_includes_it(client):
+    upload = client.post("/cards", files={"file": ("card.png", _card_image_bytes(), "image/png")})
+    card_id = upload.json()["id"]
+
+    list_response = client.get("/cards")
+    list_item = next(item for item in list_response.json()["items"] if item["id"] == card_id)
+    assert "raw_ocr_text" not in list_item
+
+    detail_response = client.get(f"/cards/{card_id}")
+    assert "raw_ocr_text" in detail_response.json()

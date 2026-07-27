@@ -1,6 +1,12 @@
 import pytest
 
-from app.schemas import CardFields, ExtractedField, FieldStatus, LlmExtractionResult, QrResult
+from app.schemas import (
+    CardFields,
+    ExtractedField,
+    FieldStatus,
+    LlmExtractionResult,
+    QrResult,
+)
 from app.services.reconciliation_service import ReconciliationService
 
 

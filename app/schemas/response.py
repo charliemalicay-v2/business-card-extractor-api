@@ -20,7 +20,23 @@ class QrInfoResponse(BaseModel):
     decoded: bool
 
 
-class CardResponse(BaseModel):
+def _build_fields(record: BusinessCardRecord) -> dict[str, FieldResponse]:
+    return {
+        field_name: FieldResponse(
+            value=getattr(record, f"{field_name}_value"),
+            status=getattr(record, f"{field_name}_status"),
+            ocr_llm_value=getattr(record, f"{field_name}_ocr_llm_value"),
+            qr_value=getattr(record, f"{field_name}_qr_value"),
+        )
+        for field_name in _FIELD_NAMES
+    }
+
+
+class CardListItemResponse(BaseModel):
+    """Slimmer record shape for GET /cards list items -- omits raw_ocr_text, which
+    adds unnecessary payload weight when echoed for every row in a paginated list.
+    Use CardResponse (via GET /cards/{id}) for the full record including raw OCR text."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
@@ -28,25 +44,31 @@ class CardResponse(BaseModel):
     fields: dict[str, FieldResponse]
     optional_fields: dict[str, str]
     qr: QrInfoResponse
-    raw_ocr_text: str
     created_at: datetime
     updated_at: datetime
 
     @classmethod
-    def from_record(cls, record: BusinessCardRecord) -> "CardResponse":
-        fields = {
-            field_name: FieldResponse(
-                value=getattr(record, f"{field_name}_value"),
-                status=getattr(record, f"{field_name}_status"),
-                ocr_llm_value=getattr(record, f"{field_name}_ocr_llm_value"),
-                qr_value=getattr(record, f"{field_name}_qr_value"),
-            )
-            for field_name in _FIELD_NAMES
-        }
+    def from_record(cls, record: BusinessCardRecord) -> "CardListItemResponse":
         return cls(
             id=record.id,
             status=record.status,
-            fields=fields,
+            fields=_build_fields(record),
+            optional_fields=record.optional_fields,
+            qr=QrInfoResponse(detected=record.qr_detected, decoded=record.qr_decoded),
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+        )
+
+
+class CardResponse(CardListItemResponse):
+    raw_ocr_text: str
+
+    @classmethod
+    def from_record(cls, record: BusinessCardRecord) -> "CardResponse":
+        return cls(
+            id=record.id,
+            status=record.status,
+            fields=_build_fields(record),
             optional_fields=record.optional_fields,
             qr=QrInfoResponse(detected=record.qr_detected, decoded=record.qr_decoded),
             raw_ocr_text=record.raw_ocr_text,
@@ -56,7 +78,7 @@ class CardResponse(BaseModel):
 
 
 class CardListResponse(BaseModel):
-    items: list[CardResponse]
+    items: list[CardListItemResponse]
     total: int
     page: int
     page_size: int

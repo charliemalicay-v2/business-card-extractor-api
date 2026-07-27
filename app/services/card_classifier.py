@@ -26,7 +26,7 @@ class CardClassifier:
 
         image_area = gray.shape[0] * gray.shape[1]
         largest = max(contours, key=cv2.contourArea)
-        x, y, w, h = cv2.boundingRect(largest)
+        _, _, w, h = cv2.boundingRect(largest)
 
         if h == 0 or w == 0:
             return False
