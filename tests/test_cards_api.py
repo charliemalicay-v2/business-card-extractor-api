@@ -277,6 +277,9 @@ def test_list_cards_items_omit_raw_ocr_text_but_detail_view_includes_it(client):
     list_item = next(item for item in list_response.json()["items"] if item["id"] == card_id)
     assert "raw_ocr_text" not in list_item
 
+    detail_response = client.get(f"/cards/{card_id}")
+    assert "raw_ocr_text" in detail_response.json()
+
 
 def test_upload_card_response_includes_local_image_url(client):
     response = client.post("/cards", files={"file": ("card.png", _card_image_bytes(), "image/png")})
@@ -335,6 +338,3 @@ def test_get_card_image_url_uses_storage_backend_url_for_non_local_backend(clien
     response = client.get(f"/cards/{card_id}")
 
     assert response.json()["image_url"] == f"https://example-bucket.s3.amazonaws.com/{key}"
-
-    detail_response = client.get(f"/cards/{card_id}")
-    assert "raw_ocr_text" in detail_response.json()
