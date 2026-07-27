@@ -25,3 +25,6 @@ class LocalImageStorage:
             "LocalImageStorage URLs are served via /cards/{id}/image, keyed by record id, "
             "not by storage key -- see build_image_url()."
         )
+
+    def path_for(self, key: str) -> Path:
+        return self._base_dir / key
