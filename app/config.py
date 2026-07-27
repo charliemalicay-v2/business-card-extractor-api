@@ -11,6 +11,20 @@ class Settings(BaseSettings):
     ocr_min_text_length: int = 10
     cors_allowed_origins: str = "http://localhost:3000"
 
+    image_storage_backend: str = "local"
+    image_storage_local_dir: str = "./data/images"
+    image_storage_url_ttl_seconds: int = 3600
+
+    aws_s3_bucket: str = ""
+    aws_region: str = ""
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
+
+    supabase_url: str = ""
+    supabase_service_key: str = ""
+    supabase_storage_bucket: str = ""
+    supabase_storage_public: bool = False
+
     @property
     def allowed_content_types(self) -> list[str]:
         return [t.strip() for t in self.allowed_image_content_types.split(",") if t.strip()]

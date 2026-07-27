@@ -16,3 +16,7 @@ class OcrNoTextError(Exception):
 
 class ExtractionServiceUnavailableError(Exception):
     """Raised when the local LLM extraction backend fails to load or run."""
+
+
+class ImageStorageError(Exception):
+    """Raised when the active image storage backend fails to put/delete/url an image."""
