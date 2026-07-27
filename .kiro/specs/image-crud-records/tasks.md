@@ -40,13 +40,13 @@
     invalid and assert correct type / raise
   - _Requirements: 1.1, 1.5_
 
-- [ ] 3. Persist images on create
-- [ ] 3.1 Update `CardProcessingService.process()` to upload the image
+- [x] 3. Persist images on create
+- [x] 3.1 Update `CardProcessingService.process()` to upload the image
   - Generate a `uuid4`-based storage key with the original extension, call
     `image_storage.put(...)` before building the record, set `image_storage_key` on the record
   - On `ImageStorageError`, propagate before any DB write (no partial record)
   - _Requirements: 3.1, 3.2, 1.6_
-- [ ] 3.2 Integration test: create with `LocalImageStorage` against a tmp dir
+- [x] 3.2 Integration test: create with `LocalImageStorage` against a tmp dir
   - Assert the file exists after `POST /cards` and the record's `image_storage_key` is set
   - _Requirements: 3.1, 3.2_
 

@@ -51,7 +51,7 @@ async def upload_card(
             detail={"error_code": "invalid_image", "message": "Uploaded file is empty."},
         )
 
-    record = service.process(raw_bytes, image_filename=file.filename)
+    record = service.process(raw_bytes, image_filename=file.filename, content_type=file.content_type)
     return CardResponse.from_record(record)
 
 

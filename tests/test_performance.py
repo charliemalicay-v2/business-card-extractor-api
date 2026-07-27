@@ -20,6 +20,7 @@ from app.schemas import ExtractedField, LlmExtractionResult
 from app.services.card_classifier import CardClassifier
 from app.services.card_processing_service import CardProcessingService
 from app.services.image_preprocessor import ImagePreprocessor
+from app.services.image_storage.local_storage import LocalImageStorage
 from app.services.qr_service import QrService
 from app.services.reconciliation_service import ReconciliationService
 
@@ -43,7 +44,7 @@ class _FakeLlmExtractionService:
         )
 
 
-def test_pipeline_latency_excluding_ocr_and_llm_stays_well_within_nfr_budget(db_session):
+def test_pipeline_latency_excluding_ocr_and_llm_stays_well_within_nfr_budget(db_session, tmp_path):
     service = CardProcessingService(
         image_preprocessor=ImagePreprocessor(),
         ocr_service=_FakeOcrService(),
@@ -52,6 +53,7 @@ def test_pipeline_latency_excluding_ocr_and_llm_stays_well_within_nfr_budget(db_
         llm_extraction_service=_FakeLlmExtractionService(),
         reconciliation_service=ReconciliationService(),
         card_repository=CardRepository(db_session),
+        image_storage=LocalImageStorage(str(tmp_path)),
     )
     raw_bytes = (_FIXTURES_DIR / "card_with_qr.png").read_bytes()
 
