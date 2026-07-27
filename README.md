@@ -70,6 +70,20 @@ and hasn't been verified against real dependencies).
 
 ## Release Notes
 
+### 0.4.0 ([#6](../../pull/6), [#7](../../pull/7), [#8](../../pull/8), [#9](../../pull/9))
+- Added real image persistence: uploaded card images are now stored via a pluggable backend
+  (`local` disk, AWS S3, or Supabase Storage, selected by `IMAGE_STORAGE_BACKEND`) instead of
+  only recording the original filename.
+- Every card response now includes an `image_url` (`/cards/{id}/image` for the local backend, a
+  presigned/public URL for S3/Supabase, or `null` if the record has no stored image).
+- Added `GET /cards/{id}/image` to stream a locally-stored image directly.
+- Added full update/delete CRUD: `PATCH /cards/{id}` (partial field updates and/or image
+  replacement) and `DELETE /cards/{id}` (removes the record and its stored image).
+- Storage backend failures now map to a clean `502 image_storage_unavailable` response instead
+  of an unhandled error.
+- See [.kiro/specs/image-crud-records/](.kiro/specs/image-crud-records/) for the full
+  requirements, design, and task list.
+
 ### 0.3.1 ([#5](../../pull/5))
 - Enabled CORS so a browser frontend can call the API: allowed origins are configured via the
   `CORS_ALLOWED_ORIGINS` env var (default `http://localhost:3000`), with allowed methods/headers

@@ -15,7 +15,21 @@ No authentication is required — this is a single-user/internal tool (see
 | POST   | `/cards`                | Upload a business card image, run the full pipeline   |
 | GET    | `/cards/{id}`           | Retrieve one record (full detail, incl. raw OCR text) |
 | GET    | `/cards`                | List records (filter by status, paginated)            |
+| GET    | `/cards/{id}/image`     | Stream the stored image (local backend only)          |
+| PATCH  | `/cards/{id}`           | Update field values and/or replace the stored image   |
 | PATCH  | `/cards/{id}/review`    | Resolve a record stuck in `needs_review`               |
+| DELETE | `/cards/{id}`           | Delete a record and its stored image                  |
+
+## Image storage
+
+Every record's stored image is reachable via the `image_url` field on `CardResponse` /
+`CardListItemResponse` (`null` if the record has no stored image, e.g. one created before
+image storage existed). Where that URL points depends on `IMAGE_STORAGE_BACKEND`:
+
+- **`local`** (default): `image_url` is `/cards/{id}/image`, an endpoint on this API that
+  streams the file directly.
+- **`s3`** / **`supabase`**: `image_url` is a presigned (or public, if configured) URL pointing
+  directly at the storage bucket — fetchable by a browser without needing storage credentials.
 
 ## Core concepts
 
@@ -60,13 +74,16 @@ curl -X POST http://localhost:8000/cards \
   },
   "optional_fields": { "website": "acme.com" },
   "qr": { "detected": false, "decoded": false },
+  "image_url": "/cards/b3f1c2a0-1111-4a22-9c33-abcdef123456/image",
   "raw_ocr_text": "Jane Doe\nSales Manager\nAcme Corp\njane@acme.com\n+1-555-0100",
   "created_at": "2026-07-27T10:00:00Z",
   "updated_at": "2026-07-27T10:00:00Z"
 }
 ```
 
-Nothing further to do — the record is already `confirmed`.
+Nothing further to do — the record is already `confirmed`. Fetch the image itself with
+`curl http://localhost:8000/cards/b3f1c2a0-1111-4a22-9c33-abcdef123456/image` (shown here for
+the default `local` backend — see [Image storage](#image-storage) above for S3/Supabase).
 
 ---
 
@@ -214,6 +231,7 @@ curl "http://localhost:8000/cards?status=needs_review&page=1&page_size=10"
       "fields": { "...": "..." },
       "optional_fields": {},
       "qr": { "detected": true, "decoded": true },
+      "image_url": "/cards/d5b3e4c2-3333-4c44-b155-cdef34567890/image",
       "created_at": "2026-07-27T10:10:00Z",
       "updated_at": "2026-07-27T10:10:00Z"
     }
@@ -252,6 +270,75 @@ curl -i http://localhost:8000/cards/00000000-0000-0000-0000-000000000000
 
 ---
 
+## Scenario 6: Update a record's fields and/or image
+
+`PATCH /cards/{id}` is a multipart request (like upload) so it can accept an optional image
+file alongside field values. All fields are optional — send only what you're changing.
+
+**Update field values only:**
+
+```bash
+curl -X PATCH http://localhost:8000/cards/b3f1c2a0-1111-4a22-9c33-abcdef123456 \
+  -F "company_value=Acme Corporation" \
+  -F "phone_value=+1-555-0199"
+```
+
+**Replace the stored image** (the old image is deleted from storage once the update succeeds):
+
+```bash
+curl -X PATCH http://localhost:8000/cards/b3f1c2a0-1111-4a22-9c33-abcdef123456 \
+  -F "file=@new_scan.jpg;type=image/jpeg"
+```
+
+**Update `optional_fields`** — since this is a multipart request, nested objects can't be sent
+as regular form fields, so `optional_fields` is a JSON-encoded string:
+
+```bash
+curl -X PATCH http://localhost:8000/cards/b3f1c2a0-1111-4a22-9c33-abcdef123456 \
+  -F 'optional_fields={"fax": "+1-555-9999"}'
+```
+
+Both a field value and a new image can be included in the same request. The response is the
+full updated `CardResponse` (same shape as Scenario 1).
+
+**Error cases:**
+
+```bash
+# Empty payload -- no fields and no file
+curl -i -X PATCH http://localhost:8000/cards/<id>
+# -> 400 {"error_code": "invalid_update_payload", "message": "At least one field value or an image file must be provided."}
+
+# optional_fields isn't valid JSON, or isn't a JSON object
+curl -i -X PATCH http://localhost:8000/cards/<id> -F "optional_fields=not-json"
+# -> 400 {"error_code": "invalid_update_payload", "message": "optional_fields must be valid JSON."}
+```
+
+`PATCH /cards/{id}` is independent of `PATCH /cards/{id}/review` — updating field values here
+doesn't change `status`, and resolving a review conflict doesn't affect other fields updated
+through this endpoint.
+
+---
+
+## Scenario 7: Delete a record
+
+```bash
+curl -i -X DELETE http://localhost:8000/cards/b3f1c2a0-1111-4a22-9c33-abcdef123456
+# -> 204 No Content
+```
+
+Deletes the record and its stored image. If the record doesn't exist:
+
+```bash
+curl -i -X DELETE http://localhost:8000/cards/00000000-0000-0000-0000-000000000000
+# -> 404 {"error_code": "record_not_found", "message": "No record found with id ..."}
+```
+
+If the image storage backend fails to delete the underlying file, the record is still deleted
+(a `204` is still returned) — the storage failure is logged but doesn't block cleanup of the
+database row.
+
+---
+
 ## Error scenarios
 
 | Trigger | HTTP status | `error_code` |
@@ -264,6 +351,9 @@ curl -i http://localhost:8000/cards/00000000-0000-0000-0000-000000000000
 | Local LLM model isn't loaded/available | 503 | `extraction_service_unavailable` |
 | Record id doesn't exist | 404 | `record_not_found` |
 | Review payload invalid (empty, or record not in `needs_review`) | 400 | `invalid_review_payload` |
+| Update payload invalid (no fields/image, or `optional_fields` isn't a valid JSON object) | 400 | `invalid_update_payload` |
+| No stored image for this record, or `GET /cards/{id}/image` used on a non-local backend | 404 | `image_not_found` |
+| Image storage backend (local disk / S3 / Supabase) failed to read, write, or delete | 502 | `image_storage_unavailable` |
 | Database write failed | 500 | `persistence_failed` |
 
 **Example — uploading a non-card image:**
@@ -307,12 +397,22 @@ curl -X POST http://localhost:8000/cards -F "file=@card.jpg;type=image/jpeg"
 # Get one
 curl http://localhost:8000/cards/<id>
 
+# Get the stored image (local backend)
+curl http://localhost:8000/cards/<id>/image -o card_image.jpg
+
 # List (all, or filtered/paginated)
 curl http://localhost:8000/cards
 curl "http://localhost:8000/cards?status=needs_review&page=1&page_size=10"
+
+# Update fields and/or replace the image
+curl -X PATCH http://localhost:8000/cards/<id> -F "company_value=Corrected Value"
+curl -X PATCH http://localhost:8000/cards/<id> -F "file=@new_card.jpg;type=image/jpeg"
 
 # Resolve a review conflict
 curl -X PATCH http://localhost:8000/cards/<id>/review \
   -H "Content-Type: application/json" \
   -d '{"company": "Corrected Value"}'
+
+# Delete
+curl -X DELETE http://localhost:8000/cards/<id>
 ```

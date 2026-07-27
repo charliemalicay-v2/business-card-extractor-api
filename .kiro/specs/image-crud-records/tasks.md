@@ -117,10 +117,17 @@
     `ImageStorageError` reachable from `GET`/list read paths, not just create
   - _Requirements: 1.6_
 
-- [ ] 9. Full regression pass
-- [ ] 9.1 Run the full existing suite plus all new tests; fix any response-shape regressions in
+- [x] 9. Full regression pass
+- [x] 9.1 Run the full existing suite plus all new tests; fix any response-shape regressions in
   existing create/list/get/review tests caused by the new `image_url` field
+  - 139 passed, `ruff check` clean; no regressions surfaced during any task in this spec
   - _Requirements: Non-Functional Notes (existing suite must keep passing)_
-- [ ] 9.2 Update README/API usage docs and Postman collection for the two new endpoints and the
+- [x] 9.2 Update README/API usage docs and Postman collection for the two new endpoints and the
   new `image_url` response field
+  - README: added a 0.4.0 release notes entry (PRs #6-#9) and updated endpoint references
+  - `docs/API_USAGE.md`: updated endpoints table, added an "Image storage" section, added
+    `image_url` to example responses, added Scenario 6 (update) and Scenario 7 (delete), updated
+    the error table and curl cheat sheet
+  - Postman collection: added "Get Card Image" request, and new "Cards - Update" / "Cards -
+    Delete" folders with happy-path and error-case requests
   - _Requirements: 2.1, 2.2, 4.*, 5.*_
