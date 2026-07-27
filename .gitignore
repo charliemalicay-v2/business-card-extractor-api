@@ -151,10 +151,14 @@ activemq-data/
 .env
 .envrc
 .venv
+.venv-wsl
 env/
 venv/
 ENV/
 env.bak/
+
+# Local LLM model files (large binaries, never commit)
+models/
 venv.bak/
 
 # Spyder project settings

@@ -1,11 +1,4 @@
-root    ::= "{" ws
-            "\"name\":" ws field "," ws
-            "\"position\":" ws field "," ws
-            "\"company\":" ws field "," ws
-            "\"email\":" ws field "," ws
-            "\"phone\":" ws field "," ws
-            "\"optional_fields\":" ws object
-            ws "}"
+root    ::= "{" ws "\"name\":" ws field "," ws "\"position\":" ws field "," ws "\"company\":" ws field "," ws "\"email\":" ws field "," ws "\"phone\":" ws field "," ws "\"optional_fields\":" ws object ws "}"
 
 field   ::= "{" ws "\"value\":" ws (string | "null") "," ws "\"confidence\":" ws number ws "}"
 

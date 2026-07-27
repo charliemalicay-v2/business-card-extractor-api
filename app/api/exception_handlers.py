@@ -25,9 +25,10 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(InvalidImageError)
     async def handle_invalid_image(request: Request, exc: InvalidImageError) -> JSONResponse:
+        logger.warning("Invalid image upload rejected: %s", exc)
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            content={"error_code": "invalid_image", "message": str(exc)},
+            content={"error_code": "invalid_image", "message": "Uploaded file is not a valid image."},
         )
 
     @app.exception_handler(NotABusinessCardError)
@@ -43,18 +44,23 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(OcrNoTextError)
     async def handle_ocr_no_text(request: Request, exc: OcrNoTextError) -> JSONResponse:
+        logger.warning("OCR produced no usable text: %s", exc)
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            content={"error_code": "ocr_no_text", "message": str(exc)},
+            content={"error_code": "ocr_no_text", "message": "No readable text could be extracted from the image."},
         )
 
     @app.exception_handler(ExtractionServiceUnavailableError)
     async def handle_extraction_unavailable(
         request: Request, exc: ExtractionServiceUnavailableError
     ) -> JSONResponse:
+        logger.exception("LLM extraction service unavailable")
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content={"error_code": "extraction_service_unavailable", "message": str(exc)},
+            content={
+                "error_code": "extraction_service_unavailable",
+                "message": "The extraction service is temporarily unavailable. Please try again later.",
+            },
         )
 
     @app.exception_handler(SQLAlchemyError)

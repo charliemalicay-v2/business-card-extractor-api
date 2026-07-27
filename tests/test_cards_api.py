@@ -12,6 +12,7 @@ from app.main import app
 from app.schemas import ExtractedField, LlmExtractionResult
 from app.services.card_classifier import CardClassifier
 from app.services.card_processing_service import CardProcessingService
+from app.services.exceptions import ExtractionServiceUnavailableError
 from app.services.image_preprocessor import ImagePreprocessor
 from app.services.qr_service import QrService
 from app.services.reconciliation_service import ReconciliationService
@@ -138,12 +139,16 @@ def test_upload_card_returns_422_for_non_card_image(client):
 
 
 def test_upload_card_returns_503_when_llm_extraction_service_unavailable(client):
-    """Uses the real (un-faked) LLM dependency chain: llama-cpp-python is not installed in
-    this sandbox, so this genuinely exercises get_model() raising ExtractionServiceUnavailableError
-    rather than mocking that behavior."""
+    """Forces unavailability via a fake model that raises, rather than relying on
+    llama-cpp-python being absent from the environment (which made this test
+    environment-fragile -- it silently returned 201 once llama-cpp-python was actually
+    installed and a real GGUF model was available, per manual real-model verification)."""
+
+    class _UnavailableModel:
+        def generate_json(self, prompt: str) -> str:
+            raise ExtractionServiceUnavailableError("model deliberately unavailable for this test")
 
     def override_ocr_only_fake_service():
-        from app.api.dependencies import _LazyLlmModel
         from app.services.llm.extraction_service import LlmExtractionService
 
         return CardProcessingService(
@@ -151,7 +156,7 @@ def test_upload_card_returns_503_when_llm_extraction_service_unavailable(client)
             ocr_service=_FakeOcrService(),
             card_classifier=CardClassifier(),
             qr_service=QrService(),
-            llm_extraction_service=LlmExtractionService(_LazyLlmModel()),
+            llm_extraction_service=LlmExtractionService(_UnavailableModel()),
             reconciliation_service=ReconciliationService(),
             card_repository=CardRepository(client.db_session),
         )
