@@ -9,10 +9,15 @@ class Settings(BaseSettings):
     max_upload_size_bytes: int = 10 * 1024 * 1024
     allowed_image_content_types: str = "image/jpeg,image/png"
     ocr_min_text_length: int = 10
+    cors_allowed_origins: str = "http://localhost:3000"
 
     @property
     def allowed_content_types(self) -> list[str]:
         return [t.strip() for t in self.allowed_image_content_types.split(",") if t.strip()]
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [o.strip() for o in self.cors_allowed_origins.split(",") if o.strip()]
 
 
 settings = Settings()
