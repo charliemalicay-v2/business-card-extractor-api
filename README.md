@@ -67,3 +67,28 @@ Integration and end-to-end tests require the local Postgres container from `dock
 model are actually available in the environment; otherwise those dependencies are faked for
 unit-test isolation (see `.kiro/specs/business-card-extractor/tasks.md` for details on what has
 and hasn't been verified against real dependencies).
+
+## Release Notes
+
+### 0.3.0 ([#3](../../pull/3))
+- Fixed the `POST /cards` shape-classification check incorrectly rejecting valid business card
+  photos: `check_shape()` now unions the bounding boxes of all detected contours instead of
+  relying on the single largest one, and falls back to the raw image dimensions when no contours
+  are detected at all.
+- Added regression tests covering fragmented card outlines and the no-contours fallback path.
+
+### 0.2.0 ([#2](../../pull/2))
+- Implemented the full extraction pipeline: image upload -> OpenCV/Tesseract OCR + classification
+  -> QR detection/parsing -> local llama.cpp field extraction -> reconciliation -> PostgreSQL
+  persistence.
+- Implemented the REST API: `POST /cards`, `GET /cards/{id}`, `GET /cards`,
+  `PATCH /cards/{id}/review`.
+- Added the Alembic migration for the `business_cards` table, Docker Compose for local Postgres,
+  and 80 passing tests (unit, integration against real Postgres, and e2e fixture tests).
+- Sanitized error responses and fixed remaining review comments (CI, docs, list payload,
+  healthcheck).
+
+### 0.1.0 ([#1](../../pull/1))
+- Added the spec-driven planning docs for the Business Card Extractor API: EARS-format
+  requirements, FastAPI/OpenCV/Tesseract/llama.cpp architecture design, and a sequenced
+  implementation task list.
