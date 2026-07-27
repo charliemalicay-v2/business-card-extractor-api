@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: business_cards
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/business_cards
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system dependencies (Tesseract OCR)
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # llama-cpp-python is intentionally NOT installed here: it only ships as a source
+          # distribution requiring a C++ toolchain/cmake to build, which would make CI slow
+          # and fragile. The LLM-dependent code paths are designed to degrade gracefully
+          # (ExtractionServiceUnavailableError) when llama-cpp-python is absent, and the test
+          # suite covers both that path and the real-model path is verified manually/locally
+          # (see .kiro/specs/business-card-extractor/tasks.md).
+          grep -v '^llama-cpp-python' requirements.txt > requirements-ci.txt
+          pip install -r requirements-ci.txt
+          pip install ruff
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Run Alembic migration
+        run: alembic upgrade head
+
+      - name: Run tests
+        run: pytest -q
