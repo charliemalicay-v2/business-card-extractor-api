@@ -40,6 +40,7 @@ class _LazyLlmModel:
 
 def get_card_processing_service(
     repository: CardRepository = Depends(get_card_repository),
+    image_storage: ImageStorage = Depends(get_image_storage),
 ) -> CardProcessingService:
     return CardProcessingService(
         image_preprocessor=ImagePreprocessor(),
@@ -49,4 +50,5 @@ def get_card_processing_service(
         llm_extraction_service=LlmExtractionService(_LazyLlmModel()),
         reconciliation_service=ReconciliationService(),
         card_repository=repository,
+        image_storage=image_storage,
     )

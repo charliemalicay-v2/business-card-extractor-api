@@ -50,7 +50,7 @@ class _FakeLlmExtractionService:
 
 
 @pytest.fixture
-def client(db_session):
+def client(db_session, image_storage):
     def override_get_db():
         yield db_session
 
@@ -63,6 +63,7 @@ def client(db_session):
             llm_extraction_service=_FakeLlmExtractionService(),
             reconciliation_service=ReconciliationService(),
             card_repository=CardRepository(db_session),
+            image_storage=image_storage,
         )
 
     app.dependency_overrides[get_db] = override_get_db

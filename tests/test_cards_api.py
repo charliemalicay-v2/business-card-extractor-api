@@ -49,7 +49,7 @@ def _card_image_bytes() -> bytes:
 
 
 @pytest.fixture
-def client(db_session):
+def client(db_session, image_storage):
     def override_get_db():
         yield db_session
 
@@ -62,6 +62,7 @@ def client(db_session):
             llm_extraction_service=_FakeLlmExtractionService(),
             reconciliation_service=ReconciliationService(),
             card_repository=CardRepository(db_session),
+            image_storage=image_storage,
         )
 
     app.dependency_overrides[get_db] = override_get_db
@@ -117,7 +118,7 @@ def test_upload_card_rejects_empty_file(client):
     assert response.json()["error_code"] == "invalid_image"
 
 
-def test_upload_card_returns_422_for_non_card_image(client):
+def test_upload_card_returns_422_for_non_card_image(client, image_storage):
     app.dependency_overrides[get_card_processing_service] = lambda: CardProcessingService(
         image_preprocessor=ImagePreprocessor(),
         ocr_service=_FakeOcrService(text=_NON_CARD_OCR_TEXT),
@@ -126,6 +127,7 @@ def test_upload_card_returns_422_for_non_card_image(client):
         llm_extraction_service=_FakeLlmExtractionService(),
         reconciliation_service=ReconciliationService(),
         card_repository=CardRepository(client.db_session),
+        image_storage=image_storage,
     )
 
     response = client.post(
@@ -138,7 +140,7 @@ def test_upload_card_returns_422_for_non_card_image(client):
     assert body["stage"] == "text_pattern"
 
 
-def test_upload_card_returns_503_when_llm_extraction_service_unavailable(client):
+def test_upload_card_returns_503_when_llm_extraction_service_unavailable(client, image_storage):
     """Forces unavailability via a fake model that raises, rather than relying on
     llama-cpp-python being absent from the environment (which made this test
     environment-fragile -- it silently returned 201 once llama-cpp-python was actually
@@ -159,6 +161,7 @@ def test_upload_card_returns_503_when_llm_extraction_service_unavailable(client)
             llm_extraction_service=LlmExtractionService(_UnavailableModel()),
             reconciliation_service=ReconciliationService(),
             card_repository=CardRepository(client.db_session),
+            image_storage=image_storage,
         )
 
     app.dependency_overrides[get_card_processing_service] = override_ocr_only_fake_service
@@ -190,7 +193,7 @@ def test_get_card_returns_404_for_unknown_id(client):
     assert response.json()["error_code"] == "record_not_found"
 
 
-def test_resolve_review_updates_conflicting_field_and_confirms_record(client):
+def test_resolve_review_updates_conflicting_field_and_confirms_record(client, image_storage):
     app.dependency_overrides[get_card_processing_service] = lambda: CardProcessingService(
         image_preprocessor=ImagePreprocessor(),
         ocr_service=_FakeOcrService(),
@@ -199,6 +202,7 @@ def test_resolve_review_updates_conflicting_field_and_confirms_record(client):
         llm_extraction_service=_FakeLlmExtractionService(),
         reconciliation_service=ReconciliationService(),
         card_repository=CardRepository(client.db_session),
+        image_storage=image_storage,
     )
 
     upload = client.post("/cards", files={"file": ("card.png", _card_image_bytes(), "image/png")})

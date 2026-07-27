@@ -1,15 +1,20 @@
+import uuid
+from pathlib import PurePosixPath
+
 from app.db.card_repository import CardRepository
 from app.models import BusinessCardRecord
 from app.schemas import QrResult, ReconciledCard
 from app.services.card_classifier import CardClassifier
 from app.services.exceptions import NotABusinessCardError, OcrNoTextError
 from app.services.image_preprocessor import ImagePreprocessor
+from app.services.image_storage import ImageStorage
 from app.services.llm.extraction_service import LlmExtractionService
 from app.services.ocr_service import OcrService
 from app.services.qr_service import QrService
 from app.services.reconciliation_service import ReconciliationService
 
 _FIELD_NAMES = ("name", "position", "company", "email", "phone")
+_DEFAULT_CONTENT_TYPE = "application/octet-stream"
 
 
 class CardProcessingService:
@@ -22,6 +27,7 @@ class CardProcessingService:
         llm_extraction_service: LlmExtractionService,
         reconciliation_service: ReconciliationService,
         card_repository: CardRepository,
+        image_storage: ImageStorage,
     ):
         self._image_preprocessor = image_preprocessor
         self._ocr_service = ocr_service
@@ -30,8 +36,14 @@ class CardProcessingService:
         self._llm_extraction_service = llm_extraction_service
         self._reconciliation_service = reconciliation_service
         self._card_repository = card_repository
+        self._image_storage = image_storage
 
-    def process(self, raw_bytes: bytes, image_filename: str | None = None) -> BusinessCardRecord:
+    def process(
+        self,
+        raw_bytes: bytes,
+        image_filename: str | None = None,
+        content_type: str | None = None,
+    ) -> BusinessCardRecord:
         image = self._image_preprocessor.load(raw_bytes)
 
         classification = self._card_classifier.classify(image, self._ocr_service)
@@ -46,8 +58,16 @@ class CardProcessingService:
         llm_result = self._llm_extraction_service.extract(ocr_text)
         reconciled = self._reconciliation_service.reconcile(llm_result, qr_result)
 
-        record = self._build_record(reconciled, qr_result, ocr_text, image_filename)
+        image_storage_key = self._store_image(raw_bytes, image_filename, content_type)
+
+        record = self._build_record(reconciled, qr_result, ocr_text, image_filename, image_storage_key)
         return self._card_repository.create(record)
+
+    def _store_image(self, raw_bytes: bytes, image_filename: str | None, content_type: str | None) -> str:
+        extension = PurePosixPath(image_filename).suffix if image_filename else ""
+        key = f"{uuid.uuid4()}{extension}"
+        self._image_storage.put(key, raw_bytes, content_type or _DEFAULT_CONTENT_TYPE)
+        return key
 
     def _build_record(
         self,
@@ -55,6 +75,7 @@ class CardProcessingService:
         qr_result: QrResult,
         raw_ocr_text: str,
         image_filename: str | None,
+        image_storage_key: str,
     ) -> BusinessCardRecord:
         field_kwargs = {}
         for field_name in _FIELD_NAMES:
@@ -72,5 +93,6 @@ class CardProcessingService:
             qr_decoded=qr_result.decoded,
             qr_raw_payload=qr_result.raw_payload,
             image_filename=image_filename,
+            image_storage_key=image_storage_key,
             **field_kwargs,
         )

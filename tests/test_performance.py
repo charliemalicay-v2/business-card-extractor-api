@@ -43,7 +43,7 @@ class _FakeLlmExtractionService:
         )
 
 
-def test_pipeline_latency_excluding_ocr_and_llm_stays_well_within_nfr_budget(db_session):
+def test_pipeline_latency_excluding_ocr_and_llm_stays_well_within_nfr_budget(db_session, image_storage):
     service = CardProcessingService(
         image_preprocessor=ImagePreprocessor(),
         ocr_service=_FakeOcrService(),
@@ -52,6 +52,7 @@ def test_pipeline_latency_excluding_ocr_and_llm_stays_well_within_nfr_budget(db_
         llm_extraction_service=_FakeLlmExtractionService(),
         reconciliation_service=ReconciliationService(),
         card_repository=CardRepository(db_session),
+        image_storage=image_storage,
     )
     raw_bytes = (_FIXTURES_DIR / "card_with_qr.png").read_bytes()
 
