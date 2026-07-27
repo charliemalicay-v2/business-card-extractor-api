@@ -105,9 +105,11 @@
     succeeds (204) when the storage delete is forced to fail (mock raises)
   - _Requirements: 5.1, 5.2, 5.3, 5.4_
 
-- [ ] 8. Exception handling wiring
-- [ ] 8.1 Register `ImageStorageError` -> `502 image_storage_unavailable` in
+- [x] 8. Exception handling wiring
+- [x] 8.1 Register `ImageStorageError` -> `502 image_storage_unavailable` in
   `app/api/exception_handlers.py`, following the existing pattern for `NotABusinessCardError`
+  - Landed early (PR #8 follow-up) since `build_image_url()` (task 4) already made
+    `ImageStorageError` reachable from `GET`/list read paths, not just create
   - _Requirements: 1.6_
 
 - [ ] 9. Full regression pass
