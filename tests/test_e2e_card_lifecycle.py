@@ -21,7 +21,6 @@ from app.schemas import ExtractedField, LlmExtractionResult
 from app.services.card_classifier import CardClassifier
 from app.services.card_processing_service import CardProcessingService
 from app.services.image_preprocessor import ImagePreprocessor
-from app.services.image_storage.local_storage import LocalImageStorage
 from app.services.qr_service import QrService
 from app.services.reconciliation_service import ReconciliationService
 
@@ -51,7 +50,7 @@ class _FakeLlmExtractionService:
 
 
 @pytest.fixture
-def client(db_session, tmp_path):
+def client(db_session, image_storage):
     def override_get_db():
         yield db_session
 
@@ -64,7 +63,7 @@ def client(db_session, tmp_path):
             llm_extraction_service=_FakeLlmExtractionService(),
             reconciliation_service=ReconciliationService(),
             card_repository=CardRepository(db_session),
-            image_storage=LocalImageStorage(str(tmp_path)),
+            image_storage=image_storage,
         )
 
     app.dependency_overrides[get_db] = override_get_db

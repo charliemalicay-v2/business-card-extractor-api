@@ -89,8 +89,8 @@ def _build_service(db_session, llm_service, image_storage) -> CardProcessingServ
     )
 
 
-def test_process_happy_path_without_qr_persists_confirmed_record(db_session, tmp_path):
-    service = _build_service(db_session, _FakeLlmExtractionService(), LocalImageStorage(str(tmp_path)))
+def test_process_happy_path_without_qr_persists_confirmed_record(db_session, image_storage):
+    service = _build_service(db_session, _FakeLlmExtractionService(), image_storage)
 
     record = service.process(_card_image_bytes(), image_filename="card.png")
 
@@ -105,8 +105,8 @@ def test_process_happy_path_without_qr_persists_confirmed_record(db_session, tmp
     assert persisted is not None
 
 
-def test_process_happy_path_with_qr_confirms_matching_fields(db_session, tmp_path):
-    service = _build_service(db_session, _FakeLlmExtractionService(), LocalImageStorage(str(tmp_path)))
+def test_process_happy_path_with_qr_confirms_matching_fields(db_session, image_storage):
+    service = _build_service(db_session, _FakeLlmExtractionService(), image_storage)
 
     record = service.process(_card_image_with_qr_bytes())
 
@@ -117,29 +117,31 @@ def test_process_happy_path_with_qr_confirms_matching_fields(db_session, tmp_pat
     assert record.status == "confirmed"
 
 
-def test_process_raises_and_persists_nothing_when_image_is_not_a_business_card(db_session, tmp_path):
-    service = _build_service(db_session, _FakeLlmExtractionService(), LocalImageStorage(str(tmp_path)))
+def test_process_raises_and_persists_nothing_when_image_is_not_a_business_card(db_session, image_storage, tmp_path):
+    service = _build_service(db_session, _FakeLlmExtractionService(), image_storage)
 
     with pytest.raises(NotABusinessCardError):
         service.process(_non_card_image_bytes())
 
     _, total = CardRepository(db_session).list()
     assert total == 0
+    assert list(tmp_path.iterdir()) == []
 
 
-def test_process_raises_and_persists_nothing_when_extraction_service_unavailable(db_session, tmp_path):
+def test_process_raises_and_persists_nothing_when_extraction_service_unavailable(db_session, image_storage, tmp_path):
     llm_service = _FakeLlmExtractionService(raises=ExtractionServiceUnavailableError("model down"))
-    service = _build_service(db_session, llm_service, LocalImageStorage(str(tmp_path)))
+    service = _build_service(db_session, llm_service, image_storage)
 
     with pytest.raises(ExtractionServiceUnavailableError):
         service.process(_card_image_bytes())
 
     _, total = CardRepository(db_session).list()
     assert total == 0
+    assert list(tmp_path.iterdir()) == []
 
 
-def test_process_persists_uploaded_image_and_sets_storage_key(db_session, tmp_path):
-    service = _build_service(db_session, _FakeLlmExtractionService(), LocalImageStorage(str(tmp_path)))
+def test_process_persists_uploaded_image_and_sets_storage_key(db_session, image_storage, tmp_path):
+    service = _build_service(db_session, _FakeLlmExtractionService(), image_storage)
 
     record = service.process(_card_image_bytes(), image_filename="card.png", content_type="image/png")
 
@@ -149,7 +151,22 @@ def test_process_persists_uploaded_image_and_sets_storage_key(db_session, tmp_pa
     assert stored_path.read_bytes() == _card_image_bytes()
 
 
+def test_process_stores_image_with_no_extension_when_filename_and_content_type_are_absent(
+    db_session, image_storage, tmp_path
+):
+    service = _build_service(db_session, _FakeLlmExtractionService(), image_storage)
+
+    record = service.process(_card_image_bytes())
+
+    assert record.image_storage_key is not None
+    assert "." not in record.image_storage_key
+    stored_path = tmp_path / record.image_storage_key
+    assert stored_path.read_bytes() == _card_image_bytes()
+
+
 def test_process_raises_and_persists_nothing_when_image_storage_fails(db_session, tmp_path):
+    # Deliberately builds its own LocalImageStorage (rather than the shared `image_storage`
+    # fixture) pointed at an unwritable directory, to force a storage failure.
     unwritable_dir = tmp_path / "unwritable"
     unwritable_dir.mkdir()
     unwritable_dir.chmod(0o400)
