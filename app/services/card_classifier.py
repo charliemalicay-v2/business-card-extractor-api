@@ -21,12 +21,13 @@ class CardClassifier:
         edges = cv2.Canny(gray, 50, 150)
         contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
 
-        if not contours:
-            return False
-
         image_area = gray.shape[0] * gray.shape[1]
-        largest = max(contours, key=cv2.contourArea)
-        _, _, w, h = cv2.boundingRect(largest)
+
+        if contours:
+            all_points = np.concatenate(contours)
+            _, _, w, h = cv2.boundingRect(all_points)
+        else:
+            h, w = gray.shape[0], gray.shape[1]
 
         if h == 0 or w == 0:
             return False
