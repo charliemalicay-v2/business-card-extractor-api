@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from storage3.exceptions import StorageApiError
 
 from app.services.exceptions import ImageStorageError
 from app.services.image_storage.supabase_storage import SupabaseImageStorage
@@ -29,10 +30,10 @@ def test_put_uploads_via_storage_client():
     bucket.upload.assert_called_once_with("abc.png", b"data", {"content-type": "image/png"})
 
 
-def test_put_falls_back_to_update_on_upload_conflict():
+def test_put_falls_back_to_update_on_duplicate_conflict():
     storage, client = _make_storage(public=False)
     bucket = client.storage.from_.return_value
-    bucket.upload.side_effect = Exception("Duplicate")
+    bucket.upload.side_effect = StorageApiError("Duplicate", "Duplicate", 409)
 
     storage.put("abc.png", b"data", "image/png")
 
@@ -42,11 +43,22 @@ def test_put_falls_back_to_update_on_upload_conflict():
 def test_put_raises_image_storage_error_when_update_also_fails():
     storage, client = _make_storage(public=False)
     bucket = client.storage.from_.return_value
-    bucket.upload.side_effect = Exception("Duplicate")
-    bucket.update.side_effect = Exception("still failing")
+    bucket.upload.side_effect = StorageApiError("Duplicate", "Duplicate", 409)
+    bucket.update.side_effect = StorageApiError("still failing", "InternalError", 500)
 
     with pytest.raises(ImageStorageError):
         storage.put("abc.png", b"data", "image/png")
+
+
+def test_put_raises_immediately_on_non_conflict_failure_without_retrying_update():
+    storage, client = _make_storage(public=False)
+    bucket = client.storage.from_.return_value
+    bucket.upload.side_effect = StorageApiError("Unauthorized", "Unauthorized", 401)
+
+    with pytest.raises(ImageStorageError):
+        storage.put("abc.png", b"data", "image/png")
+
+    bucket.update.assert_not_called()
 
 
 def test_delete_removes_object():
@@ -61,9 +73,18 @@ def test_delete_removes_object():
 def test_delete_missing_key_is_a_no_op():
     storage, client = _make_storage(public=False)
     bucket = client.storage.from_.return_value
-    bucket.remove.side_effect = Exception("not found")
+    bucket.remove.side_effect = StorageApiError("not found", "NotFound", 404)
 
     storage.delete("abc.png")
+
+
+def test_delete_raises_image_storage_error_on_non_not_found_failure():
+    storage, client = _make_storage(public=False)
+    bucket = client.storage.from_.return_value
+    bucket.remove.side_effect = StorageApiError("Unauthorized", "Unauthorized", 401)
+
+    with pytest.raises(ImageStorageError):
+        storage.delete("abc.png")
 
 
 def test_url_returns_public_url_when_public():
@@ -91,7 +112,7 @@ def test_url_returns_signed_url_when_not_public():
 def test_url_raises_image_storage_error_on_failure():
     storage, client = _make_storage(public=False)
     bucket = client.storage.from_.return_value
-    bucket.create_signed_url.side_effect = Exception("boom")
+    bucket.create_signed_url.side_effect = StorageApiError("boom", "InternalError", 500)
 
     with pytest.raises(ImageStorageError):
         storage.url("abc.png")
