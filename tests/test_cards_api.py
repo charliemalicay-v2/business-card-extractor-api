@@ -12,8 +12,9 @@ from app.main import app
 from app.schemas import ExtractedField, LlmExtractionResult
 from app.services.card_classifier import CardClassifier
 from app.services.card_processing_service import CardProcessingService
-from app.services.exceptions import ExtractionServiceUnavailableError
+from app.services.exceptions import ExtractionServiceUnavailableError, ImageStorageError
 from app.services.image_preprocessor import ImagePreprocessor
+from app.services.image_storage.local_storage import LocalImageStorage
 from app.services.qr_service import QrService
 from app.services.reconciliation_service import ReconciliationService
 
@@ -338,3 +339,49 @@ def test_get_card_image_url_uses_storage_backend_url_for_non_local_backend(clien
     response = client.get(f"/cards/{card_id}")
 
     assert response.json()["image_url"] == f"https://example-bucket.s3.amazonaws.com/{key}"
+
+
+def test_get_card_returns_502_when_image_storage_url_fails(client, monkeypatch):
+    import app.config as config_module
+
+    class _FailingStorage:
+        def url(self, key: str) -> str:
+            raise ImageStorageError("presigned URL generation failed")
+
+    # Upload while still on the local backend, so the create response's own image_url build
+    # succeeds; only then switch to a non-local backend with a failing url() for the GET below.
+    upload = client.post("/cards", files={"file": ("card.png", _card_image_bytes(), "image/png")})
+    card_id = upload.json()["id"]
+
+    monkeypatch.setattr(config_module.settings, "image_storage_backend", "s3")
+    app.dependency_overrides[get_image_storage] = lambda: _FailingStorage()
+
+    response = client.get(f"/cards/{card_id}")
+
+    assert response.status_code == 502
+    assert response.json()["error_code"] == "image_storage_unavailable"
+
+
+def test_upload_card_returns_502_when_image_storage_put_fails(client, tmp_path):
+    unwritable_dir = tmp_path / "unwritable"
+    unwritable_dir.mkdir()
+    unwritable_dir.chmod(0o400)
+
+    app.dependency_overrides[get_card_processing_service] = lambda: CardProcessingService(
+        image_preprocessor=ImagePreprocessor(),
+        ocr_service=_FakeOcrService(),
+        card_classifier=CardClassifier(),
+        qr_service=QrService(),
+        llm_extraction_service=_FakeLlmExtractionService(),
+        reconciliation_service=ReconciliationService(),
+        card_repository=CardRepository(client.db_session),
+        image_storage=LocalImageStorage(str(unwritable_dir / "images")),
+    )
+
+    response = client.post("/cards", files={"file": ("card.png", _card_image_bytes(), "image/png")})
+
+    assert response.status_code == 502
+    assert response.json()["error_code"] == "image_storage_unavailable"
+
+    _, total = CardRepository(client.db_session).list()
+    assert total == 0
