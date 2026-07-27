@@ -45,6 +45,12 @@ uvicorn app.main:app --reload
 - Health check: http://localhost:8000/health
 - See [docs/API_USAGE.md](docs/API_USAGE.md) for endpoint reference and worked usage
   scenarios (upload, review-conflict resolution, listing, error handling).
+- A ready-to-import Postman collection is available at
+  [postman/business-card-extractor-api.postman_collection.json](postman/business-card-extractor-api.postman_collection.json),
+  organized into **Health**, **Cards - Upload**, **Cards - Retrieval**, and
+  **Cards - Review** folders, with test scripts and a `card_id` variable that auto-chains
+  between requests. Import it into Postman and set the `base_url` collection variable if
+  not running on `localhost:8000`.
 
 If the LLM model fails to load at startup (e.g. `LLM_MODEL_PATH` not set or the model file is
 missing), the app still starts and serves requests, but `POST /cards` will return `503
