@@ -20,6 +20,9 @@ No authentication is required — this is a single-user/internal tool (see
 | PATCH  | `/cards/{id}/review`    | Resolve a record stuck in `needs_review`               |
 | DELETE | `/cards/{id}`           | Delete a record and its stored image                  |
 
+Grouped by resource lifecycle: create (`POST`) → read (`GET`) → update (`PATCH`) →
+delete (`DELETE`).
+
 ## Image storage
 
 Every record's stored image is reachable via the `image_url` field on `CardResponse` /
@@ -283,6 +286,32 @@ curl -X PATCH http://localhost:8000/cards/b3f1c2a0-1111-4a22-9c33-abcdef123456 \
   -F "phone_value=+1-555-0199"
 ```
 
+**Response — `200 OK`:**
+
+```json
+{
+  "id": "b3f1c2a0-1111-4a22-9c33-abcdef123456",
+  "status": "confirmed",
+  "fields": {
+    "name":     { "value": "Jane Doe",          "status": "unverified", "ocr_llm_value": "Jane Doe",          "qr_value": null },
+    "position": { "value": "Sales Manager",     "status": "unverified", "ocr_llm_value": "Sales Manager",     "qr_value": null },
+    "company":  { "value": "Acme Corporation",  "status": "unverified", "ocr_llm_value": "Acme Corp",         "qr_value": null },
+    "email":    { "value": "jane@acme.com",     "status": "unverified", "ocr_llm_value": "jane@acme.com",     "qr_value": null },
+    "phone":    { "value": "+1-555-0199",       "status": "unverified", "ocr_llm_value": "+1-555-0100",       "qr_value": null }
+  },
+  "optional_fields": { "website": "acme.com" },
+  "qr": { "detected": false, "decoded": false },
+  "image_url": "/cards/b3f1c2a0-1111-4a22-9c33-abcdef123456/image",
+  "raw_ocr_text": "Jane Doe\nSales Manager\nAcme Corp\njane@acme.com\n+1-555-0100",
+  "created_at": "2026-07-27T10:00:00Z",
+  "updated_at": "2026-07-27T11:30:00Z"
+}
+```
+
+Note `company.value`/`phone.value` reflect the update, but `ocr_llm_value` (and `status`)
+are untouched — `PATCH /cards/{id}` overwrites the authoritative `value` only, it doesn't
+re-run reconciliation. `updated_at` advances; everything else about the record is unchanged.
+
 **Replace the stored image** (the old image is deleted from storage once the update succeeds):
 
 ```bash
@@ -298,8 +327,7 @@ curl -X PATCH http://localhost:8000/cards/b3f1c2a0-1111-4a22-9c33-abcdef123456 \
   -F 'optional_fields={"fax": "+1-555-9999"}'
 ```
 
-Both a field value and a new image can be included in the same request. The response is the
-full updated `CardResponse` (same shape as Scenario 1).
+Both a field value and a new image can be included in the same request.
 
 **Error cases:**
 
