@@ -52,6 +52,7 @@ class BusinessCardRecord(Base):
     qr_raw_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     image_filename: Mapped[str | None] = mapped_column(String, nullable=True)
+    image_storage_key: Mapped[str | None] = mapped_column(String, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

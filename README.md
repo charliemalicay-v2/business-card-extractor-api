@@ -70,6 +70,13 @@ and hasn't been verified against real dependencies).
 
 ## Release Notes
 
+### 0.3.1 ([#5](../../pull/5))
+- Enabled CORS so a browser frontend can call the API: allowed origins are configured via the
+  `CORS_ALLOWED_ORIGINS` env var (default `http://localhost:3000`), with allowed methods/headers
+  narrowed instead of wildcarded.
+- Added unit tests covering `cors_origins` parsing and documented the new env var in
+  `.env.example`.
+
 ### 0.3.0 ([#3](../../pull/3))
 - Fixed the `POST /cards` shape-classification check incorrectly rejecting valid business card
   photos: `check_shape()` now unions the bounding boxes of all detected contours instead of
