@@ -1,0 +1,20 @@
+root    ::= "{" ws
+            "\"name\":" ws field "," ws
+            "\"position\":" ws field "," ws
+            "\"company\":" ws field "," ws
+            "\"email\":" ws field "," ws
+            "\"phone\":" ws field "," ws
+            "\"optional_fields\":" ws object
+            ws "}"
+
+field   ::= "{" ws "\"value\":" ws (string | "null") "," ws "\"confidence\":" ws number ws "}"
+
+object  ::= "{" ws (pair ("," ws pair)*)? ws "}"
+pair    ::= string ":" ws string
+
+string  ::= "\"" char* "\""
+char    ::= [^"\\] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F])
+
+number  ::= "-"? ("0" | [1-9] [0-9]*) ("." [0-9]+)? ([eE] [+-]? [0-9]+)?
+
+ws      ::= [ \t\n]*

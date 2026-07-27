@@ -1,0 +1,12 @@
+[project]
+name = "business-card-extractor-api"
+version = "0.1.0"
+description = "REST API that extracts structured contact data from business card images (OCR + QR + local LLM)"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
