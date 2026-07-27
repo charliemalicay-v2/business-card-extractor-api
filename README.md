@@ -43,6 +43,8 @@ uvicorn app.main:app --reload
 
 - API docs: http://localhost:8000/docs
 - Health check: http://localhost:8000/health
+- See [docs/API_USAGE.md](docs/API_USAGE.md) for endpoint reference and worked usage
+  scenarios (upload, review-conflict resolution, listing, error handling).
 
 If the LLM model fails to load at startup (e.g. `LLM_MODEL_PATH` not set or the model file is
 missing), the app still starts and serves requests, but `POST /cards` will return `503
