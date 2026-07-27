@@ -3,9 +3,19 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
+from app.config import settings
 from app.models import BusinessCardRecord
+from app.services.image_storage import ImageStorage
 
 _FIELD_NAMES = ("name", "position", "company", "email", "phone")
+
+
+def build_image_url(record: BusinessCardRecord, image_storage: ImageStorage) -> str | None:
+    if record.image_storage_key is None:
+        return None
+    if settings.image_storage_backend == "local":
+        return f"/cards/{record.id}/image"
+    return image_storage.url(record.image_storage_key)
 
 
 class FieldResponse(BaseModel):
@@ -44,17 +54,19 @@ class CardListItemResponse(BaseModel):
     fields: dict[str, FieldResponse]
     optional_fields: dict[str, str]
     qr: QrInfoResponse
+    image_url: str | None
     created_at: datetime
     updated_at: datetime
 
     @classmethod
-    def from_record(cls, record: BusinessCardRecord) -> "CardListItemResponse":
+    def from_record(cls, record: BusinessCardRecord, image_storage: ImageStorage) -> "CardListItemResponse":
         return cls(
             id=record.id,
             status=record.status,
             fields=_build_fields(record),
             optional_fields=record.optional_fields,
             qr=QrInfoResponse(detected=record.qr_detected, decoded=record.qr_decoded),
+            image_url=build_image_url(record, image_storage),
             created_at=record.created_at,
             updated_at=record.updated_at,
         )
@@ -64,13 +76,14 @@ class CardResponse(CardListItemResponse):
     raw_ocr_text: str
 
     @classmethod
-    def from_record(cls, record: BusinessCardRecord) -> "CardResponse":
+    def from_record(cls, record: BusinessCardRecord, image_storage: ImageStorage) -> "CardResponse":
         return cls(
             id=record.id,
             status=record.status,
             fields=_build_fields(record),
             optional_fields=record.optional_fields,
             qr=QrInfoResponse(detected=record.qr_detected, decoded=record.qr_decoded),
+            image_url=build_image_url(record, image_storage),
             raw_ocr_text=record.raw_ocr_text,
             created_at=record.created_at,
             updated_at=record.updated_at,

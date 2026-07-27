@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import get_card_processing_service
+from app.api.dependencies import get_card_processing_service, get_image_storage
 from app.db.card_repository import CardRepository
 from app.db.session import get_db
 from app.main import app
@@ -276,6 +276,65 @@ def test_list_cards_items_omit_raw_ocr_text_but_detail_view_includes_it(client):
     list_response = client.get("/cards")
     list_item = next(item for item in list_response.json()["items"] if item["id"] == card_id)
     assert "raw_ocr_text" not in list_item
+
+
+def test_upload_card_response_includes_local_image_url(client):
+    response = client.post("/cards", files={"file": ("card.png", _card_image_bytes(), "image/png")})
+
+    body = response.json()
+    assert body["image_url"] == f"/cards/{body['id']}/image"
+
+
+def test_get_card_response_includes_local_image_url(client):
+    upload = client.post("/cards", files={"file": ("card.png", _card_image_bytes(), "image/png")})
+    card_id = upload.json()["id"]
+
+    response = client.get(f"/cards/{card_id}")
+
+    assert response.json()["image_url"] == f"/cards/{card_id}/image"
+
+
+def test_list_cards_items_include_image_url(client):
+    upload = client.post("/cards", files={"file": ("card.png", _card_image_bytes(), "image/png")})
+    card_id = upload.json()["id"]
+
+    list_response = client.get("/cards")
+    list_item = next(item for item in list_response.json()["items"] if item["id"] == card_id)
+
+    assert list_item["image_url"] == f"/cards/{card_id}/image"
+
+
+def test_get_card_image_url_is_null_when_record_has_no_stored_image(client):
+    upload = client.post("/cards", files={"file": ("card.png", _card_image_bytes(), "image/png")})
+    card_id = upload.json()["id"]
+
+    # Simulate a legacy record from before image storage existed (image_storage_key is NULL).
+    record = CardRepository(client.db_session).get_by_id(uuid.UUID(card_id))
+    record.image_storage_key = None
+    client.db_session.commit()
+
+    response = client.get(f"/cards/{card_id}")
+
+    assert response.json()["image_url"] is None
+
+
+def test_get_card_image_url_uses_storage_backend_url_for_non_local_backend(client, monkeypatch):
+    import app.config as config_module
+
+    class _FakeNonLocalStorage:
+        def url(self, key: str) -> str:
+            return f"https://example-bucket.s3.amazonaws.com/{key}"
+
+    monkeypatch.setattr(config_module.settings, "image_storage_backend", "s3")
+    app.dependency_overrides[get_image_storage] = lambda: _FakeNonLocalStorage()
+
+    upload = client.post("/cards", files={"file": ("card.png", _card_image_bytes(), "image/png")})
+    card_id = upload.json()["id"]
+    key = CardRepository(client.db_session).get_by_id(uuid.UUID(card_id)).image_storage_key
+
+    response = client.get(f"/cards/{card_id}")
+
+    assert response.json()["image_url"] == f"https://example-bucket.s3.amazonaws.com/{key}"
 
     detail_response = client.get(f"/cards/{card_id}")
     assert "raw_ocr_text" in detail_response.json()

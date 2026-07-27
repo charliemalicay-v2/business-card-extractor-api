@@ -3,7 +3,7 @@ import uuid
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi import status as http_status
 
-from app.api.dependencies import get_card_processing_service, get_card_repository
+from app.api.dependencies import get_card_processing_service, get_card_repository, get_image_storage
 from app.config import settings
 from app.db.card_repository import CardRepository
 from app.schemas.response import (
@@ -13,6 +13,7 @@ from app.schemas.response import (
     ReviewResolutionRequest,
 )
 from app.services.card_processing_service import CardProcessingService
+from app.services.image_storage import ImageStorage
 
 router = APIRouter(prefix="/cards", tags=["cards"])
 
@@ -21,6 +22,7 @@ router = APIRouter(prefix="/cards", tags=["cards"])
 async def upload_card(
     file: UploadFile = File(...),
     service: CardProcessingService = Depends(get_card_processing_service),
+    image_storage: ImageStorage = Depends(get_image_storage),
 ) -> CardResponse:
     if file.content_type not in settings.allowed_content_types:
         raise HTTPException(
@@ -52,12 +54,14 @@ async def upload_card(
         )
 
     record = service.process(raw_bytes, image_filename=file.filename, content_type=file.content_type)
-    return CardResponse.from_record(record)
+    return CardResponse.from_record(record, image_storage)
 
 
 @router.get("/{card_id}", response_model=CardResponse)
 def get_card(
-    card_id: uuid.UUID, repository: CardRepository = Depends(get_card_repository)
+    card_id: uuid.UUID,
+    repository: CardRepository = Depends(get_card_repository),
+    image_storage: ImageStorage = Depends(get_image_storage),
 ) -> CardResponse:
     record = repository.get_by_id(card_id)
     if record is None:
@@ -65,7 +69,7 @@ def get_card(
             status_code=http_status.HTTP_404_NOT_FOUND,
             detail={"error_code": "record_not_found", "message": f"No record found with id {card_id}."},
         )
-    return CardResponse.from_record(record)
+    return CardResponse.from_record(record, image_storage)
 
 
 @router.get("", response_model=CardListResponse)
@@ -74,10 +78,11 @@ def list_cards(
     page: int = 1,
     page_size: int = 20,
     repository: CardRepository = Depends(get_card_repository),
+    image_storage: ImageStorage = Depends(get_image_storage),
 ) -> CardListResponse:
     records, total = repository.list(status=status, page=page, page_size=page_size)
     return CardListResponse(
-        items=[CardListItemResponse.from_record(r) for r in records],
+        items=[CardListItemResponse.from_record(r, image_storage) for r in records],
         total=total,
         page=page,
         page_size=page_size,
@@ -89,6 +94,7 @@ def resolve_review(
     card_id: uuid.UUID,
     payload: ReviewResolutionRequest,
     repository: CardRepository = Depends(get_card_repository),
+    image_storage: ImageStorage = Depends(get_image_storage),
 ) -> CardResponse:
     record = repository.get_by_id(card_id)
     if record is None:
@@ -117,4 +123,4 @@ def resolve_review(
         )
 
     updated = repository.resolve_review(card_id, resolved_fields)
-    return CardResponse.from_record(updated)
+    return CardResponse.from_record(updated, image_storage)

@@ -50,14 +50,14 @@
   - Assert the file exists after `POST /cards` and the record's `image_storage_key` is set
   - _Requirements: 3.1, 3.2_
 
-- [ ] 4. Expose `image_url` in responses
-- [ ] 4.1 Add `build_image_url(record)` helper (special-cases `local` -> `/cards/{id}/image`,
+- [x] 4. Expose `image_url` in responses
+- [x] 4.1 Add `build_image_url(record)` helper (special-cases `local` -> `/cards/{id}/image`,
   else delegates to `image_storage.url(key)`; returns `None` when `image_storage_key is None`)
   - _Requirements: 2.1, 2.2, 2.5, 6.1_
-- [ ] 4.2 Add `image_url` field to `CardResponse` and `CardListItemResponse`, wire through
+- [x] 4.2 Add `image_url` field to `CardResponse` and `CardListItemResponse`, wire through
   `from_record()`
   - _Requirements: 2.1, 2.2, 3.3_
-- [ ] 4.3 API tests: `GET /cards/{id}` and `GET /cards` include correct `image_url` for local/S3/
+- [x] 4.3 API tests: `GET /cards/{id}` and `GET /cards` include correct `image_url` for local/S3/
   Supabase-configured backends (S3/Supabase mocked), and `null` for a record with no
   `image_storage_key`
   - _Requirements: 2.1, 2.2, 2.5_
