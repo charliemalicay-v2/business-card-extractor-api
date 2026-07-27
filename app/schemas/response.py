@@ -105,6 +105,15 @@ class ReviewResolutionRequest(BaseModel):
     phone: str | None = None
 
 
+class CardUpdateRequest(BaseModel):
+    name_value: str | None = None
+    position_value: str | None = None
+    company_value: str | None = None
+    email_value: str | None = None
+    phone_value: str | None = None
+    optional_fields: dict[str, str] | None = None
+
+
 class ErrorResponse(BaseModel):
     error_code: str
     message: str

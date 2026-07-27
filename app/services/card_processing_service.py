@@ -1,13 +1,10 @@
-import uuid
-from pathlib import PurePosixPath
-
 from app.db.card_repository import CardRepository
 from app.models import BusinessCardRecord
 from app.schemas import QrResult, ReconciledCard
 from app.services.card_classifier import CardClassifier
 from app.services.exceptions import NotABusinessCardError, OcrNoTextError
 from app.services.image_preprocessor import ImagePreprocessor
-from app.services.image_storage import ImageStorage
+from app.services.image_storage import ImageStorage, generate_image_storage_key
 from app.services.llm.extraction_service import LlmExtractionService
 from app.services.ocr_service import OcrService
 from app.services.qr_service import QrService
@@ -64,8 +61,7 @@ class CardProcessingService:
         return self._card_repository.create(record)
 
     def _store_image(self, raw_bytes: bytes, image_filename: str | None, content_type: str | None) -> str:
-        extension = PurePosixPath(image_filename).suffix if image_filename else ""
-        key = f"{uuid.uuid4()}{extension}"
+        key = generate_image_storage_key(image_filename)
         self._image_storage.put(key, raw_bytes, content_type or _DEFAULT_CONTENT_TYPE)
         return key
 

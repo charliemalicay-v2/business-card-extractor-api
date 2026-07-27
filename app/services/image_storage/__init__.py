@@ -1,10 +1,18 @@
+import uuid
+from pathlib import PurePosixPath
+
 from app.config import settings
 from app.services.image_storage.base import ImageStorage
 from app.services.image_storage.local_storage import LocalImageStorage
 from app.services.image_storage.s3_storage import S3ImageStorage
 from app.services.image_storage.supabase_storage import SupabaseImageStorage
 
-__all__ = ["ImageStorage", "get_image_storage"]
+__all__ = ["ImageStorage", "generate_image_storage_key", "get_image_storage"]
+
+
+def generate_image_storage_key(image_filename: str | None) -> str:
+    extension = PurePosixPath(image_filename).suffix if image_filename else ""
+    return f"{uuid.uuid4()}{extension}"
 
 
 def get_image_storage() -> ImageStorage:

@@ -42,6 +42,27 @@ class CardRepository:
 
         return records, total
 
+    def update(self, record_id: uuid.UUID, fields: dict) -> BusinessCardRecord | None:
+        record = self.get_by_id(record_id)
+        if record is None:
+            return None
+
+        for key, value in fields.items():
+            setattr(record, key, value)
+
+        self._session.commit()
+        self._session.refresh(record)
+        return record
+
+    def delete(self, record_id: uuid.UUID) -> bool:
+        record = self.get_by_id(record_id)
+        if record is None:
+            return False
+
+        self._session.delete(record)
+        self._session.commit()
+        return True
+
     def resolve_review(self, record_id: uuid.UUID, resolved_fields: dict[str, str | None]) -> BusinessCardRecord | None:
         record = self.get_by_id(record_id)
         if record is None:

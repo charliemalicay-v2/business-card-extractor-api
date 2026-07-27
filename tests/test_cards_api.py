@@ -1,3 +1,4 @@
+import json
 import uuid
 
 import cv2
@@ -5,7 +6,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import get_card_processing_service, get_image_storage
+from app.api.dependencies import get_card_processing_service, get_card_repository, get_image_storage
 from app.db.card_repository import CardRepository
 from app.db.session import get_db
 from app.main import app
@@ -49,6 +50,14 @@ def _card_image_bytes() -> bytes:
     return buffer.tobytes()
 
 
+def _replacement_card_image_bytes() -> bytes:
+    image = np.full((220, 360, 3), 255, dtype=np.uint8)
+    cv2.rectangle(image, (10, 10), (350, 210), (0, 0, 0), 4)
+    success, buffer = cv2.imencode(".png", image)
+    assert success
+    return buffer.tobytes()
+
+
 @pytest.fixture
 def client(db_session, image_storage):
     def override_get_db():
@@ -68,6 +77,7 @@ def client(db_session, image_storage):
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_card_processing_service] = override_full_fake_service
+    app.dependency_overrides[get_image_storage] = lambda: image_storage
 
     with TestClient(app) as test_client:
         test_client.db_session = db_session
@@ -385,3 +395,286 @@ def test_upload_card_returns_502_when_image_storage_put_fails(client, tmp_path):
 
     _, total = CardRepository(client.db_session).list()
     assert total == 0
+
+
+def test_get_card_image_returns_stored_bytes_with_content_type(client):
+    upload = client.post("/cards", files={"file": ("card.png", _card_image_bytes(), "image/png")})
+    card_id = upload.json()["id"]
+
+    response = client.get(f"/cards/{card_id}/image")
+
+    assert response.status_code == 200
+    assert response.content == _card_image_bytes()
+    assert response.headers["content-type"] == "image/png"
+
+
+def test_get_card_image_returns_404_for_unknown_record(client):
+    response = client.get(f"/cards/{uuid.uuid4()}/image")
+
+    assert response.status_code == 404
+    assert response.json()["error_code"] == "record_not_found"
+
+
+def test_get_card_image_returns_404_when_record_has_no_stored_image(client):
+    upload = client.post("/cards", files={"file": ("card.png", _card_image_bytes(), "image/png")})
+    card_id = upload.json()["id"]
+
+    record = CardRepository(client.db_session).get_by_id(uuid.UUID(card_id))
+    record.image_storage_key = None
+    client.db_session.commit()
+
+    response = client.get(f"/cards/{card_id}/image")
+
+    assert response.status_code == 404
+    assert response.json()["error_code"] == "image_not_found"
+
+
+def test_get_card_image_returns_404_when_file_missing_from_disk(client, tmp_path):
+    upload = client.post("/cards", files={"file": ("card.png", _card_image_bytes(), "image/png")})
+    card_id = upload.json()["id"]
+    key = CardRepository(client.db_session).get_by_id(uuid.UUID(card_id)).image_storage_key
+    (tmp_path / key).unlink()
+
+    response = client.get(f"/cards/{card_id}/image")
+
+    assert response.status_code == 404
+    assert response.json()["error_code"] == "image_not_found"
+
+
+def test_get_card_image_returns_404_for_non_local_backend(client, monkeypatch):
+    import app.config as config_module
+
+    upload = client.post("/cards", files={"file": ("card.png", _card_image_bytes(), "image/png")})
+    card_id = upload.json()["id"]
+
+    monkeypatch.setattr(config_module.settings, "image_storage_backend", "s3")
+
+    response = client.get(f"/cards/{card_id}/image")
+
+    assert response.status_code == 404
+    assert response.json()["error_code"] == "image_not_found"
+
+
+def test_update_card_updates_field_values(client):
+    upload = client.post("/cards", files={"file": ("card.png", _card_image_bytes(), "image/png")})
+    card_id = upload.json()["id"]
+
+    response = client.patch(f"/cards/{card_id}", data={"company_value": "Updated Corp"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["fields"]["company"]["value"] == "Updated Corp"
+
+    persisted = client.get(f"/cards/{card_id}").json()
+    assert persisted["fields"]["company"]["value"] == "Updated Corp"
+
+
+def test_update_card_updates_optional_fields_from_json_string(client):
+    upload = client.post("/cards", files={"file": ("card.png", _card_image_bytes(), "image/png")})
+    card_id = upload.json()["id"]
+
+    response = client.patch(
+        f"/cards/{card_id}", data={"optional_fields": json.dumps({"fax": "+1-555-9999"})}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["optional_fields"] == {"fax": "+1-555-9999"}
+
+
+def test_update_card_replaces_image_and_deletes_old_file(client, tmp_path):
+    upload = client.post("/cards", files={"file": ("card.png", _card_image_bytes(), "image/png")})
+    card_id = upload.json()["id"]
+    old_key = CardRepository(client.db_session).get_by_id(uuid.UUID(card_id)).image_storage_key
+    assert (tmp_path / old_key).exists()
+
+    response = client.patch(
+        f"/cards/{card_id}",
+        files={"file": ("new_card.png", _replacement_card_image_bytes(), "image/png")},
+    )
+
+    assert response.status_code == 200
+    new_key = CardRepository(client.db_session).get_by_id(uuid.UUID(card_id)).image_storage_key
+    assert new_key != old_key
+    assert not (tmp_path / old_key).exists()
+    assert (tmp_path / new_key).read_bytes() == _replacement_card_image_bytes()
+
+    image_response = client.get(f"/cards/{card_id}/image")
+    assert image_response.content == _replacement_card_image_bytes()
+
+
+def test_update_card_returns_404_for_unknown_id(client):
+    response = client.patch(f"/cards/{uuid.uuid4()}", data={"company_value": "Someone"})
+
+    assert response.status_code == 404
+    assert response.json()["error_code"] == "record_not_found"
+
+
+def test_update_card_rejects_empty_payload(client):
+    upload = client.post("/cards", files={"file": ("card.png", _card_image_bytes(), "image/png")})
+    card_id = upload.json()["id"]
+
+    response = client.patch(f"/cards/{card_id}")
+
+    assert response.status_code == 400
+    assert response.json()["error_code"] == "invalid_update_payload"
+
+
+def test_update_card_rejects_invalid_optional_fields_json(client):
+    upload = client.post("/cards", files={"file": ("card.png", _card_image_bytes(), "image/png")})
+    card_id = upload.json()["id"]
+
+    response = client.patch(f"/cards/{card_id}", data={"optional_fields": "not-json"})
+
+    assert response.status_code == 400
+    assert response.json()["error_code"] == "invalid_update_payload"
+
+
+def test_update_card_rejects_non_object_optional_fields_json(client):
+    upload = client.post("/cards", files={"file": ("card.png", _card_image_bytes(), "image/png")})
+    card_id = upload.json()["id"]
+
+    response = client.patch(f"/cards/{card_id}", data={"optional_fields": json.dumps(["not", "a", "dict"])})
+
+    assert response.status_code == 400
+    assert response.json()["error_code"] == "invalid_update_payload"
+
+
+def test_update_card_rejects_unsupported_replacement_image_content_type(client):
+    upload = client.post("/cards", files={"file": ("card.png", _card_image_bytes(), "image/png")})
+    card_id = upload.json()["id"]
+
+    response = client.patch(f"/cards/{card_id}", files={"file": ("card.txt", b"not an image", "text/plain")})
+
+    assert response.status_code == 400
+    assert response.json()["error_code"] == "unsupported_format"
+
+
+def test_update_card_review_endpoint_still_works_independently(client):
+    upload = client.post("/cards", files={"file": ("card.png", _card_image_bytes(), "image/png")})
+    card_id = upload.json()["id"]
+
+    record = CardRepository(client.db_session).get_by_id(uuid.UUID(card_id))
+    record.status = "needs_review"
+    record.company_status = "conflict"
+    client.db_session.commit()
+
+    update_response = client.patch(f"/cards/{card_id}", data={"phone_value": "+1-555-0200"})
+    assert update_response.status_code == 200
+    assert update_response.json()["fields"]["phone"]["value"] == "+1-555-0200"
+    # Field update alone doesn't touch review state.
+    assert update_response.json()["status"] == "needs_review"
+
+    review_response = client.patch(f"/cards/{card_id}/review", json={"company": "Acme Corporation"})
+    assert review_response.status_code == 200
+    assert review_response.json()["status"] == "confirmed"
+    assert review_response.json()["fields"]["company"]["value"] == "Acme Corporation"
+    # Review resolution didn't clobber the earlier field update.
+    assert review_response.json()["fields"]["phone"]["value"] == "+1-555-0200"
+
+
+def test_delete_card_returns_204_and_removes_record_and_image(client, tmp_path):
+    upload = client.post("/cards", files={"file": ("card.png", _card_image_bytes(), "image/png")})
+    card_id = upload.json()["id"]
+    key = CardRepository(client.db_session).get_by_id(uuid.UUID(card_id)).image_storage_key
+    assert (tmp_path / key).exists()
+
+    response = client.delete(f"/cards/{card_id}")
+
+    assert response.status_code == 204
+    assert not response.content
+    assert not (tmp_path / key).exists()
+
+    get_response = client.get(f"/cards/{card_id}")
+    assert get_response.status_code == 404
+    assert get_response.json()["error_code"] == "record_not_found"
+
+
+def test_delete_card_returns_404_for_unknown_id(client):
+    response = client.delete(f"/cards/{uuid.uuid4()}")
+
+    assert response.status_code == 404
+    assert response.json()["error_code"] == "record_not_found"
+
+
+def test_delete_card_returns_404_for_already_deleted_id(client):
+    upload = client.post("/cards", files={"file": ("card.png", _card_image_bytes(), "image/png")})
+    card_id = upload.json()["id"]
+
+    first = client.delete(f"/cards/{card_id}")
+    assert first.status_code == 204
+
+    second = client.delete(f"/cards/{card_id}")
+    assert second.status_code == 404
+    assert second.json()["error_code"] == "record_not_found"
+
+
+def test_delete_card_succeeds_even_when_image_storage_delete_fails(client):
+    class _FailingDeleteStorage:
+        def delete(self, key: str) -> None:
+            raise ImageStorageError("simulated storage delete failure")
+
+    upload = client.post("/cards", files={"file": ("card.png", _card_image_bytes(), "image/png")})
+    card_id = upload.json()["id"]
+
+    app.dependency_overrides[get_image_storage] = lambda: _FailingDeleteStorage()
+
+    response = client.delete(f"/cards/{card_id}")
+
+    assert response.status_code == 204
+
+    _, total = CardRepository(client.db_session).list()
+    assert total == 0
+
+
+def test_update_card_returns_404_when_record_disappears_before_update(client):
+    """Simulates a concurrent delete landing between the route's existence check and the
+    actual repository.update() call, by wrapping the real repository so update() reports
+    not-found even though get_by_id() still succeeds."""
+
+    class _RaceyRepository:
+        def __init__(self, real: CardRepository):
+            self._real = real
+
+        def get_by_id(self, record_id):
+            return self._real.get_by_id(record_id)
+
+        def update(self, record_id, fields):
+            return None
+
+    upload = client.post("/cards", files={"file": ("card.png", _card_image_bytes(), "image/png")})
+    card_id = upload.json()["id"]
+
+    real_repository = CardRepository(client.db_session)
+    app.dependency_overrides[get_card_repository] = lambda: _RaceyRepository(real_repository)
+
+    response = client.patch(f"/cards/{card_id}", data={"company_value": "Doesn't matter"})
+
+    assert response.status_code == 404
+    assert response.json()["error_code"] == "record_not_found"
+
+
+def test_delete_card_returns_404_when_record_disappears_before_delete(client):
+    """Simulates a concurrent delete landing between the route's existence check and the
+    actual repository.delete() call, by wrapping the real repository so delete() reports
+    not-found even though get_by_id() still succeeds."""
+
+    class _RaceyRepository:
+        def __init__(self, real: CardRepository):
+            self._real = real
+
+        def get_by_id(self, record_id):
+            return self._real.get_by_id(record_id)
+
+        def delete(self, record_id):
+            return False
+
+    upload = client.post("/cards", files={"file": ("card.png", _card_image_bytes(), "image/png")})
+    card_id = upload.json()["id"]
+
+    real_repository = CardRepository(client.db_session)
+    app.dependency_overrides[get_card_repository] = lambda: _RaceyRepository(real_repository)
+
+    response = client.delete(f"/cards/{card_id}")
+
+    assert response.status_code == 404
+    assert response.json()["error_code"] == "record_not_found"
